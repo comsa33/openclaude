@@ -28,6 +28,25 @@ export async function validateModel(
     return { valid: false, error: 'Model name cannot be empty' }
   }
 
+  // For Ollama provider, validate against cached model list instead of API call
+  // (skip enterprise allowlist since Ollama models are user-managed)
+  if (getAPIProvider() === 'openai' && isOllamaProvider()) {
+    const ollamaModels = getCachedOllamaModelOptions()
+    const found = ollamaModels.some(m => m.value === normalizedModel)
+    if (found) {
+      validModelCache.set(normalizedModel, true)
+      return { valid: true }
+    }
+    if (ollamaModels.length > 0) {
+      const MAX_SHOWN = 5
+      const names = ollamaModels.map(m => m.value)
+      const shown = names.slice(0, MAX_SHOWN).join(', ')
+      const suffix = names.length > MAX_SHOWN ? ` and ${names.length - MAX_SHOWN} more` : ''
+      return { valid: false, error: `Model '${normalizedModel}' not found on Ollama server. Available: ${shown}${suffix}` }
+    }
+    // If cache is empty, fall through to API validation
+  }
+
   // Check against availableModels allowlist before any API call
   if (!isModelAllowed(normalizedModel)) {
     return {
@@ -45,21 +64,6 @@ export async function validateModel(
   // Check if it matches ANTHROPIC_CUSTOM_MODEL_OPTION (pre-validated by the user)
   if (normalizedModel === process.env.ANTHROPIC_CUSTOM_MODEL_OPTION) {
     return { valid: true }
-  }
-
-  // For Ollama provider, validate against cached model list instead of API call
-  if (getAPIProvider() === 'openai' && isOllamaProvider()) {
-    const ollamaModels = getCachedOllamaModelOptions()
-    const found = ollamaModels.some(m => m.value === normalizedModel)
-    if (found) {
-      validModelCache.set(normalizedModel, true)
-      return { valid: true }
-    }
-    if (ollamaModels.length > 0) {
-      const available = ollamaModels.map(m => m.value).join(', ')
-      return { valid: false, error: `Model '${normalizedModel}' not found on Ollama server. Available: ${available}` }
-    }
-    // If cache is empty, fall through to API validation
   }
 
   // Check cache first

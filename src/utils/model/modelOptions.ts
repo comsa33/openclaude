@@ -333,11 +333,24 @@ function getCodexModelOptions(): ModelOption[] {
 function getModelOptionsBase(fastMode = false): ModelOption[] {
   // When using Ollama, show models from the Ollama server instead of Claude models
   if (getAPIProvider() === 'openai' && isOllamaProvider()) {
+    const defaultOption = getDefaultOptionForUser(fastMode)
     const ollamaModels = getCachedOllamaModelOptions()
     if (ollamaModels.length > 0) {
-      return ollamaModels
+      return [defaultOption, ...ollamaModels]
     }
-    // Fallback: if not yet fetched, show current model
+    // Fallback: if models not yet fetched, show current model instead of Claude models
+    const currentModel = getUserSpecifiedModelSetting() ?? getInitialMainLoopModel()
+    if (currentModel != null) {
+      return [
+        defaultOption,
+        {
+          value: currentModel,
+          label: currentModel,
+          description: 'Currently configured Ollama model',
+        },
+      ]
+    }
+    return [defaultOption]
   }
 
   if (process.env.USER_TYPE === 'ant') {

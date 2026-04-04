@@ -5,22 +5,20 @@
  */
 
 import type { ModelOption } from './modelOptions.js'
+import { getOllamaApiBaseUrl } from '../providerDiscovery.js'
 
 let cachedOllamaOptions: ModelOption[] | null = null
 let fetchPromise: Promise<ModelOption[]> | null = null
 
 /**
  * Returns true when the current OPENAI_BASE_URL points at an Ollama instance.
- * Detects both /v1 suffixed URLs and the raw base URL.
+ * Detects OLLAMA_BASE_URL presence, /v1 suffixed URLs, and the raw base URL.
  */
 export function isOllamaProvider(): boolean {
-  if (!process.env.OLLAMA_BASE_URL && !process.env.OPENAI_BASE_URL) {
-    return false
-  }
-  const baseUrl = process.env.OPENAI_BASE_URL ?? ''
-  const ollamaUrl = process.env.OLLAMA_BASE_URL ?? ''
-  // Match if OPENAI_BASE_URL is derived from OLLAMA_BASE_URL (e.g. host:11434/v1)
-  if (ollamaUrl && baseUrl.startsWith(ollamaUrl)) return true
+  // Explicit OLLAMA_BASE_URL is always sufficient
+  if (process.env.OLLAMA_BASE_URL) return true
+  if (!process.env.OPENAI_BASE_URL) return false
+  const baseUrl = process.env.OPENAI_BASE_URL
   // Match common Ollama port
   try {
     const parsed = new URL(baseUrl)
@@ -31,19 +29,11 @@ export function isOllamaProvider(): boolean {
   return false
 }
 
-function getOllamaApiUrl(): string {
-  const ollamaBase = process.env.OLLAMA_BASE_URL
-  if (ollamaBase) return ollamaBase.replace(/\/+$/, '')
-  const openaiBase = process.env.OPENAI_BASE_URL ?? ''
-  // Strip /v1 suffix to get raw Ollama URL
-  return openaiBase.replace(/\/v1\/?$/, '').replace(/\/+$/, '')
-}
-
 /**
  * Fetch models from the Ollama /api/tags endpoint.
  */
 export async function fetchOllamaModels(): Promise<ModelOption[]> {
-  const apiUrl = getOllamaApiUrl()
+  const apiUrl = getOllamaApiBaseUrl()
   if (!apiUrl) return []
 
   const controller = new AbortController()
@@ -93,11 +83,16 @@ export async function fetchOllamaModels(): Promise<ModelOption[]> {
  */
 export function prefetchOllamaModels(): void {
   if (!isOllamaProvider()) return
+  if (cachedOllamaOptions && cachedOllamaOptions.length > 0) return
   if (fetchPromise) return
-  fetchPromise = fetchOllamaModels().then(options => {
-    cachedOllamaOptions = options
-    return options
-  })
+  fetchPromise = fetchOllamaModels()
+    .then(options => {
+      cachedOllamaOptions = options
+      return options
+    })
+    .finally(() => {
+      fetchPromise = null
+    })
 }
 
 /**

@@ -261,18 +261,33 @@ export const SeverityNumber = {};
           '@ant/computer-use-swift',
           '@ant/computer-use-input',
         ])
-        // Non-relative src/ path imports that don't exist
-        const missingPathPrefixes = ['src/tasks/']
         build.onResolve({ filter: /.*/ }, (args) => {
-          if (missingExternalPackages.has(args.path) || missingPathPrefixes.some(p => args.path.startsWith(p))) {
+          if (missingExternalPackages.has(args.path)) {
             return { path: args.path, namespace: 'missing-module-stub' }
+          }
+          // Non-relative src/tasks/ imports: only stub if file doesn't actually exist
+          if (args.path.startsWith('src/tasks/')) {
+            const path = require('path')
+            const fs = require('fs')
+            const resolved = path.resolve(__dirname, '..', args.path)
+            const candidates = [
+              resolved,
+              `${resolved}.ts`,
+              `${resolved}.tsx`,
+              resolved.replace(/\.js$/, '.ts'),
+              resolved.replace(/\.js$/, '.tsx'),
+              path.join(resolved, 'index.ts'),
+              path.join(resolved, 'index.tsx'),
+            ]
+            if (!candidates.some((c: string) => fs.existsSync(c))) {
+              return { path: args.path, namespace: 'missing-module-stub' }
+            }
           }
           // Only catch relative .js imports that fail to resolve
           if (args.path.endsWith('.js') && (args.path.startsWith('./') || args.path.startsWith('../'))) {
             const path = require('path')
             const fs = require('fs')
             const resolved = path.resolve(args.resolveDir, args.path)
-            // Also check .ts/.tsx variants
             const tsVariant = resolved.replace(/\.js$/, '.ts')
             const tsxVariant = resolved.replace(/\.js$/, '.tsx')
             if (!fs.existsSync(resolved) && !fs.existsSync(tsVariant) && !fs.existsSync(tsxVariant)) {
